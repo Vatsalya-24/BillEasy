@@ -71,8 +71,20 @@ Deno.serve(async (req) => {
         body: JSON.stringify({ email: user.email, notes: { supabase_user_id: user.id } })
       })
       const cust = await custRes.json()
-      if (!custRes.ok) throw new Error(cust.error?.description || 'Failed to create Razorpay customer')
-      customerId = cust.id
+      if (!custRes.ok) {
+        // Razorpay enforces one customer per email per account. If an
+        // earlier attempt (e.g. one that failed before we saved the row)
+        // already created this customer, Razorpay returns their existing
+        // id in error.metadata — reuse it instead of failing.
+        const existingId = cust.error?.metadata?.customer_id
+        if (existingId) {
+          customerId = existingId
+        } else {
+          throw new Error(cust.error?.description || 'Failed to create Razorpay customer')
+        }
+      } else {
+        customerId = cust.id
+      }
     }
 
     const subRes = await fetch('https://api.razorpay.com/v1/subscriptions', {
