@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase, supabaseReady } from './supabase.js'
+import { ensureUserScope } from './db.js'
 
 const AuthContext = createContext({ user: null, loading: true })
 
@@ -9,12 +10,20 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (!supabaseReady) return
-    supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user || null)
+
+    async function applyUser(nextUser) {
+      // Wipe any other account's cached data before this account's UI can
+      // render or sync, so nothing crosses between accounts sharing a browser.
+      if (nextUser) await ensureUserScope(nextUser.id)
+      setUser(nextUser)
+    }
+
+    supabase.auth.getSession().then(async ({ data }) => {
+      await applyUser(data.session?.user || null)
       setLoading(false)
     })
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null)
+      applyUser(session?.user || null)
     })
     return () => sub.subscription.unsubscribe()
   }, [])
