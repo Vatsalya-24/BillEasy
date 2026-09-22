@@ -25,6 +25,23 @@ db.on('versionchange', () => {
   db.close()
 })
 
+// The local cache is per-browser, not per-account. If a different person
+// signs in on the same browser, wipe the previous person's cached data
+// first — otherwise their bills/items would bleed into the new account's
+// view, and worse, could get pushed up to the new account's cloud data on
+// next sync. Call this right after every successful sign-in.
+export async function ensureUserScope(userId) {
+  const active = await db.meta.get('activeUser')
+  if (active?.value && active.value !== userId) {
+    await db.items.clear()
+    await db.parties.clear()
+    await db.invoices.clear()
+    await db.invoiceLines.clear()
+    await db.payments.clear()
+  }
+  await db.meta.put({ key: 'activeUser', value: userId })
+}
+
 // --- Items ---
 export async function addItem(item) {
   const id = genId()
